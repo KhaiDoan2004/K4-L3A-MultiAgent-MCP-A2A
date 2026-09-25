@@ -21,21 +21,29 @@ class EvidenceGateway:
         response = await self._session.list_tools()
         return sorted(tool.name for tool in response.tools)
 
-    async def call(self, tool_name: str, *, case_id: str, **arguments: str) -> dict[str, Any]:
+    async def call(
+        self, tool_name: str, *, case_id: str, **arguments: str
+    ) -> dict[str, Any]:
         payload = {"case_id": case_id, **arguments}
         result = await self._session.call_tool(tool_name, arguments=payload)
-        if result.isError:
+        if getattr(result, "is_error", None) or getattr(result, "isError", None):
             message = " ".join(
                 block.text for block in result.content if getattr(block, "text", None)
             )
-            raise RuntimeError(f"MCP tool {tool_name} failed: {message or 'unknown error'}")
+            raise RuntimeError(
+                f"MCP tool {tool_name} failed: {message or 'unknown error'}"
+            )
         evidence = getattr(result, "structuredContent", None)
         if evidence is None:
             evidence = getattr(result, "structured_content", None)
         if evidence is None:
-            text_blocks = [block.text for block in result.content if getattr(block, "text", None)]
+            text_blocks = [
+                block.text for block in result.content if getattr(block, "text", None)
+            ]
             if len(text_blocks) != 1:
-                raise ValueError(f"MCP tool {tool_name} did not return one evidence object")
+                raise ValueError(
+                    f"MCP tool {tool_name} did not return one evidence object"
+                )
             evidence = json.loads(text_blocks[0])
         self._contracts.validate_evidence(evidence, f"MCP tool {tool_name}")
         return evidence
@@ -49,7 +57,10 @@ async def connect_gateway(
     timeout = httpx2.Timeout(300.0, connect=30.0, write=30.0, pool=30.0)
     async with (
         httpx2.AsyncClient(headers=headers, timeout=timeout) as http_client,
-        streamable_http_client(endpoint, http_client=http_client) as (read_stream, write_stream),
+        streamable_http_client(endpoint, http_client=http_client) as (
+            read_stream,
+            write_stream,
+        ),
         ClientSession(read_stream, write_stream) as session,
     ):
         await session.initialize()
